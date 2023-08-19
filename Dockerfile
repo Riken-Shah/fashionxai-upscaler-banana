@@ -15,6 +15,8 @@ RUN pip3 install -r requirements.txt
 
 ARG FIREBASE_CREDENTIALS
 
+ENV FIREBASE_CREDENTIALS=$FIREBASE_CREDENTIALS
+
 # Add your model weight files 
 # (in this case we have a python script)
 ADD download.py .
@@ -24,4 +26,4 @@ ADD . .
 
 EXPOSE 8000
 
-CMD FIREBASE_CREDENTIALS python3 -u app.py
+CMD python3 -u app.py
