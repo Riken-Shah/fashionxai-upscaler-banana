@@ -1,5 +1,8 @@
 import base64
+import os
 from io import BytesIO
+import requests
+from firebase_admin import credentials, initialize_app, storage
 from potassium import Potassium, Request, Response
 
 from transformers import AutoImageProcessor, Swin2SRForImageSuperResolution
@@ -15,6 +18,13 @@ def init():
     device = 0 if torch.cuda.is_available() else -1
     processor = AutoImageProcessor.from_pretrained("caidas/swin2SR-realworld-sr-x4-64-bsrgan-psnr")
     model = Swin2SRForImageSuperResolution.from_pretrained("caidas/swin2SR-realworld-sr-x4-64-bsrgan-psnr")
+    # get credentials from env
+    firebase_cerds = os.environ.get("FIREBASE_CREDENTIALS")
+    if not os.path.exists("firebase_creds.json"):
+        with open("firebase_creds.json", "w") as f:
+            f.write(firebase_cerds)
+    cred = credentials.Certificate("firebase_creds.json")
+    initialize_app(cred, {'storageBucket': 'fashionxai.appspot.com'})
     
     context = {
         "model": model,
@@ -29,8 +39,7 @@ def handler(context: dict, request: Request) -> Response:
     url = request.json.get("image")
     processor = context.get("processor")
     model = context.get("model")
-    # read base64 image
-    image = Image.open(BytesIO(base64.b64decode(url)))
+    image = Image.open(requests.get(url, stream=True).raw)
     # image = Image.open(requests.get(url, stream=True).raw)
     # # prepare image for the model
     inputs = processor(image, return_tensors="pt")
@@ -43,14 +52,18 @@ def handler(context: dict, request: Request) -> Response:
 
     # # save output
     output_image = Image.fromarray(output)
-    # png 
-    output_image_base64 = base64.b64encode(output_image.tobytes()).decode("utf-8")
-    data_url = f"data:image/png;base64,{output_image_base64}"
+    # output_image_base64 = base64.b64encode(output_image.tobytes()).decode("utf-8")
+    # data_url = f"data:image/png;base64,{output_image_base64}"
     output_image.save("output.png")
+    fileName = "output.png"
+    bucket = storage.bucket()
+    blob = bucket.blob(fileName)
+    blob.upload_from_filename(fileName)
+    blob.make_public()
 
 
     return Response(
-        json = {"outputs": data_url},
+        json = {"outputs": blob.public_url},
         status=200
     )
 
